@@ -12,8 +12,16 @@
       <section class="rounded-3xl border border-teal-100/70 bg-white/90 p-6 shadow-lg shadow-teal-900/5">
         <form class="grid grid-cols-1 gap-4 md:grid-cols-2" @submit.prevent="submit">
           <div>
-            <label class="mb-1 block text-sm font-medium text-slate-700">Patient ID</label>
-            <input v-model.number="form.patient_id" type="number" min="1" class="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-teal-500 focus:ring-4 focus:ring-teal-100" required />
+            <label class="mb-1 block text-sm font-medium text-slate-700">Patient</label>
+            <select v-model="form.patient_id" class="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-teal-500 focus:ring-4 focus:ring-teal-100" required>
+              <option value="" disabled>Select patient</option>
+              <option v-for="patient in patients" :key="patient.id" :value="patient.id">
+                {{ patient.name }} ({{ patient.email }})
+              </option>
+            </select>
+            <p v-if="!patients.length" class="mt-1 text-xs text-amber-700">
+              No approved patients linked to your account.
+            </p>
             <p v-if="form.errors.patient_id" class="mt-1 text-xs text-red-600">{{ form.errors.patient_id }}</p>
           </div>
           <div>
@@ -42,7 +50,7 @@
             <p v-if="form.errors.notes" class="mt-1 text-xs text-red-600">{{ form.errors.notes }}</p>
           </div>
           <div class="md:col-span-2 flex gap-3">
-            <button type="submit" :disabled="form.processing" class="rounded-xl bg-gradient-to-r from-teal-600 to-emerald-500 px-5 py-2.5 text-sm font-semibold text-white transition hover:from-teal-700 hover:to-emerald-600 disabled:opacity-60">
+            <button type="submit" :disabled="form.processing || !patients.length" class="rounded-xl bg-gradient-to-r from-teal-600 to-emerald-500 px-5 py-2.5 text-sm font-semibold text-white transition hover:from-teal-700 hover:to-emerald-600 disabled:opacity-60">
               {{ form.processing ? 'Saving...' : 'Create Prescription' }}
             </button>
             <Link href="/doctor/prescriptions" class="rounded-xl border border-slate-300 bg-white px-5 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50">
@@ -59,8 +67,15 @@
 import { Link, useForm } from '@inertiajs/vue3';
 import DoctorLayout from '../../Layouts/DoctorLayout.vue';
 
+defineProps({
+  patients: {
+    type: Array,
+    default: () => [],
+  },
+});
+
 const form = useForm({
-  patient_id: null,
+  patient_id: '',
   medication: '',
   dosage: '',
   frequency: '',

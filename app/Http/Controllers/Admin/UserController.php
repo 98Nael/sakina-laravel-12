@@ -879,14 +879,86 @@ class UserController extends Controller
     /**
      * List pending patients created by doctors.
      */
-    public function pendingPatients()
+    public function pendingPatients(Request $request)
     {
-        $patients = Patient::where('approval_status', 'pending')
-            ->latest()
-            ->paginate(15);
+        $validated = $request->validate([
+            'search' => 'nullable|string|max:255',
+            'sort' => 'nullable|in:latest,oldest,name_asc,name_desc',
+        ]);
+
+        $query = Patient::query()->where('approval_status', 'pending');
+
+        if (!empty($validated['search'])) {
+            $search = $validated['search'];
+            $query->where(function ($q) use ($search) {
+                $q->where('name', 'like', "%{$search}%")
+                    ->orWhere('email', 'like', "%{$search}%")
+                    ->orWhere('phone', 'like', "%{$search}%");
+            });
+        }
+
+        $sort = $validated['sort'] ?? 'latest';
+        switch ($sort) {
+            case 'oldest':
+                $query->oldest();
+                break;
+            case 'name_asc':
+                $query->orderBy('name');
+                break;
+            case 'name_desc':
+                $query->orderByDesc('name');
+                break;
+            case 'latest':
+            default:
+                $query->latest();
+                break;
+        }
+
+        $patientsPaginator = $query->paginate(12)->withQueryString();
+        $creatorIds = collect($patientsPaginator->items())
+            ->pluck('created_by_user_id')
+            ->filter()
+            ->unique()
+            ->values();
+
+        $creators = $creatorIds->isEmpty()
+            ? collect()
+            : User::whereIn('id', $creatorIds)->pluck('name', 'id');
+
+        $patients = $patientsPaginator->through(function (Patient $patient) use ($creators) {
+            return [
+                'id' => $patient->id,
+                'name' => $patient->name,
+                'email' => $patient->email,
+                'phone' => $patient->phone,
+                'created_by_role' => $patient->created_by_role,
+                'created_by_user_id' => $patient->created_by_user_id,
+                'created_by_name' => $patient->created_by_user_id
+                    ? ($creators[$patient->created_by_user_id] ?? null)
+                    : null,
+                'approval_notes' => $patient->approval_notes,
+                'waiting_days' => $patient->created_at
+                    ? $patient->created_at->diffInDays(now())
+                    : 0,
+                'created_at' => $patient->created_at?->toDateTimeString(),
+            ];
+        });
 
         return Inertia::render('Admin/Patients/Pending', [
             'patients' => $patients,
+            'filters' => [
+                'search' => $validated['search'] ?? '',
+                'sort' => $sort,
+            ],
+            'stats' => [
+                'total_pending' => Patient::where('approval_status', 'pending')->count(),
+                'pending_today' => Patient::where('approval_status', 'pending')
+                    ->whereDate('created_at', today())
+                    ->count(),
+                'waiting_over_3_days' => Patient::where('approval_status', 'pending')
+                    ->where('created_at', '<', now()->subDays(3))
+                    ->count(),
+            ],
         ]);
     }
 

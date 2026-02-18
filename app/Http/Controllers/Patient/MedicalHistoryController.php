@@ -3,6 +3,8 @@
 namespace App\Http\Controllers\Patient;
 
 use App\Http\Controllers\Controller;
+use App\Models\MedicalRecord;
+use App\Models\Patient\Patient;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 
@@ -13,28 +15,15 @@ class MedicalHistoryController extends Controller
      */
     public function index(Request $request)
     {
-        $patient = $request->user();
-        
-        $medicalHistory = [
-            [
-                'id' => 1,
-                'date' => '2026-01-28',
-                'doctor' => 'Dr. Sarah Johnson',
-                'visit_type' => 'Check-up',
-                'diagnosis' => 'Hypertension',
-                'notes' => 'Blood pressure elevated, prescribed Lisinopril',
-                'status' => 'completed',
-            ],
-            [
-                'id' => 2,
-                'date' => '2025-12-15',
-                'doctor' => 'Dr. Michael Chen',
-                'visit_type' => 'Consultation',
-                'diagnosis' => 'Type 2 Diabetes',
-                'notes' => 'Started on Metformin 500mg twice daily',
-                'status' => 'completed',
-            ],
-        ];
+        $patientId = $this->resolvePatientId($request);
+
+        $medicalHistory = MedicalRecord::query()
+            ->with('doctor:id,name')
+            ->where('patient_id', $patientId)
+            ->latest('record_date')
+            ->get()
+            ->map(fn (MedicalRecord $record) => $this->mapRecord($record))
+            ->values();
 
         return Inertia::render('MedicalHistory/Index', [
             'medicalHistory' => $medicalHistory,
@@ -44,21 +33,43 @@ class MedicalHistoryController extends Controller
     /**
      * Show detailed medical record
      */
-    public function show($recordId)
+    public function show(Request $request, $recordId)
     {
+        $patientId = $this->resolvePatientId($request);
+        $record = MedicalRecord::query()
+            ->with('doctor:id,name')
+            ->where('patient_id', $patientId)
+            ->findOrFail($recordId);
+
         return Inertia::render('MedicalHistory/Show', [
-            'record' => [], // Add real data
-            'attachments' => [], // Add real data
+            'record' => $this->mapRecord($record),
+            'attachments' => [],
         ]);
     }
 
     /**
      * Download medical records
      */
-    public function download($recordId)
+    public function download(Request $request, $recordId)
     {
-        // Generate and download medical record file
-        return response()->download('path/to/file');
+        $patientId = $this->resolvePatientId($request);
+        $record = MedicalRecord::query()
+            ->with('doctor:id,name')
+            ->where('patient_id', $patientId)
+            ->findOrFail($recordId);
+
+        $filename = 'medical-record-' . $record->id . '.txt';
+
+        return response()->streamDownload(function () use ($record) {
+            echo "Medical Record #" . $record->id . PHP_EOL;
+            echo "Date: " . optional($record->record_date)->format('Y-m-d H:i') . PHP_EOL;
+            echo "Doctor: " . ($record->doctor?->name ?? '-') . PHP_EOL;
+            echo "Diagnosis: " . ($record->diagnosis ?? '-') . PHP_EOL;
+            echo "Treatment: " . ($record->treatment ?? '-') . PHP_EOL;
+            echo "Notes: " . ($record->notes ?? '-') . PHP_EOL;
+        }, $filename, [
+            'Content-Type' => 'text/plain; charset=UTF-8',
+        ]);
     }
 
     /**
@@ -75,5 +86,34 @@ class MedicalHistoryController extends Controller
         // Send request to medical provider
         
         return back()->with('success', 'Records request sent successfully');
+    }
+
+    private function resolvePatientId(Request $request): int
+    {
+        $user = $request->user();
+
+        $patientId = Patient::query()->where('user_id', $user->id)->value('id');
+        if (!$patientId) {
+            $patientId = Patient::query()->where('email', $user->email)->value('id');
+        }
+
+        if (!$patientId) {
+            abort(403, 'Patient profile not found');
+        }
+
+        return (int) $patientId;
+    }
+
+    private function mapRecord(MedicalRecord $record): array
+    {
+        return [
+            'id' => $record->id,
+            'date' => $record->record_date?->toDateString(),
+            'doctor' => $record->doctor?->name ?? '-',
+            'visit_type' => 'Consultation',
+            'diagnosis' => $record->diagnosis,
+            'notes' => $record->notes ?: $record->treatment,
+            'status' => 'completed',
+        ];
     }
 }

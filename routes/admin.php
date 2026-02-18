@@ -63,10 +63,20 @@ Route::middleware(['auth', 'role:admin', 'inertia_admin'])->prefix('admin')->nam
     Route::delete('/settings/about-contents/{aboutContent}', [SettingsController::class, 'destroyAboutContent'])->name('settings.about.destroy');
     
     // التقارير والتحليلات
+    Route::get('/Appointment Report', function () {
+        return redirect()->route('admin.reports.appointments');
+    });
+    Route::get('/User Report', function () {
+        return redirect()->route('admin.reports.users');
+    });
     Route::get('/reports', [ReportsController::class, 'index'])->name('reports.index');
     Route::get('/reports/users', [ReportsController::class, 'userReport'])->name('reports.users');
+    Route::get('/reports/users/Export', [ReportsController::class, 'exportUsers'])->name('reports.users.export');
+    Route::get('/reports/users/export', [ReportsController::class, 'exportUsers']);
     Route::get('/reports/doctors', [ReportsController::class, 'doctorReport'])->name('reports.doctors');
     Route::get('/reports/appointments', [ReportsController::class, 'appointmentReport'])->name('reports.appointments');
+    Route::get('/reports/appointments/Export', [ReportsController::class, 'exportAppointments'])->name('reports.appointments.export');
+    Route::get('/reports/appointments/export', [ReportsController::class, 'exportAppointments']);
     Route::get('/reports/system', [ReportsController::class, 'systemReport'])->name('reports.system');
     Route::post('/reports/export', [ReportsController::class, 'export'])->name('reports.export');
 });

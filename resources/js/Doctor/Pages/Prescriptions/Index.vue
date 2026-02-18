@@ -19,7 +19,7 @@
       <section class="grid gap-4 sm:grid-cols-3">
         <article class="rounded-2xl border border-teal-100/70 bg-white/90 p-4 shadow-lg shadow-teal-900/5">
           <p class="text-sm text-slate-500">Total</p>
-          <p class="mt-1 text-2xl font-bold text-slate-900">{{ rows.length }}</p>
+          <p class="mt-1 text-2xl font-bold text-slate-900">{{ prescriptions.total ?? rows.length }}</p>
         </article>
         <article class="rounded-2xl border border-teal-100/70 bg-white/90 p-4 shadow-lg shadow-teal-900/5">
           <p class="text-sm text-slate-500">Active</p>
@@ -79,6 +79,25 @@
             </tbody>
           </table>
         </div>
+
+        <div v-if="(prescriptions.links || []).length > 3" class="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 px-5 py-4">
+          <p class="text-xs text-slate-500">
+            Showing {{ prescriptions.from || 0 }} to {{ prescriptions.to || 0 }} of {{ prescriptions.total || 0 }}
+          </p>
+          <div class="flex flex-wrap gap-2">
+            <Link
+              v-for="link in prescriptions.links"
+              :key="`${link.url}-${link.label}`"
+              :href="link.url || ''"
+              class="rounded-lg border px-3 py-1.5 text-xs font-semibold transition"
+              :class="[
+                link.active ? 'border-teal-600 bg-teal-600 text-white' : 'border-slate-300 text-slate-700 hover:bg-slate-50',
+                !link.url ? 'pointer-events-none opacity-50' : '',
+              ]"
+              v-html="link.label"
+            />
+          </div>
+        </div>
       </section>
     </div>
   </DoctorLayout>
@@ -91,12 +110,12 @@ import DoctorLayout from '../../Layouts/DoctorLayout.vue';
 
 const props = defineProps({
   prescriptions: {
-    type: Array,
-    default: () => [],
+    type: Object,
+    default: () => ({ data: [], links: [] }),
   },
 });
 
-const rows = computed(() => props.prescriptions || []);
+const rows = computed(() => props.prescriptions?.data || []);
 const activeCount = computed(() => rows.value.filter((item) => String(item.status).toLowerCase() === 'active').length);
 const otherCount = computed(() => rows.value.length - activeCount.value);
 

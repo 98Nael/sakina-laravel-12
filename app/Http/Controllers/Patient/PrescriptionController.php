@@ -3,6 +3,8 @@
 namespace App\Http\Controllers\Patient;
 
 use App\Http\Controllers\Controller;
+use App\Models\Patient\Patient;
+use App\Models\Prescription;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 
@@ -13,43 +15,15 @@ class PrescriptionController extends Controller
      */
     public function index(Request $request)
     {
-        $patient = $request->user();
-        
-        $prescriptions = [
-            [
-                'id' => 1,
-                'medication' => 'Lisinopril',
-                'dosage' => '10mg',
-                'frequency' => 'Once daily',
-                'prescribed_by' => 'Dr. Sarah Johnson',
-                'issued_date' => '2026-02-01',
-                'expiry_date' => '2026-05-01',
-                'refills' => 2,
-                'status' => 'active',
-            ],
-            [
-                'id' => 2,
-                'medication' => 'Metformin',
-                'dosage' => '500mg',
-                'frequency' => 'Twice daily',
-                'prescribed_by' => 'Dr. Michael Chen',
-                'issued_date' => '2026-01-28',
-                'expiry_date' => '2026-04-28',
-                'refills' => 3,
-                'status' => 'active',
-            ],
-            [
-                'id' => 3,
-                'medication' => 'Aspirin',
-                'dosage' => '81mg',
-                'frequency' => 'Once daily',
-                'prescribed_by' => 'Dr. Sarah Johnson',
-                'issued_date' => '2025-11-15',
-                'expiry_date' => '2026-02-15',
-                'refills' => 0,
-                'status' => 'expired',
-            ],
-        ];
+        $patientId = $this->resolvePatientId($request);
+
+        $prescriptions = Prescription::query()
+            ->with('doctor:id,name')
+            ->where('patient_id', $patientId)
+            ->latest('issued_date')
+            ->get()
+            ->map(fn (Prescription $prescription) => $this->mapPrescription($prescription))
+            ->values();
 
         return Inertia::render('Prescriptions/Index', [
             'prescriptions' => $prescriptions,
@@ -59,11 +33,17 @@ class PrescriptionController extends Controller
     /**
      * Show prescription details
      */
-    public function show($prescriptionId)
+    public function show(Request $request, $prescriptionId)
     {
+        $patientId = $this->resolvePatientId($request);
+        $prescription = Prescription::query()
+            ->with('doctor:id,name')
+            ->where('patient_id', $patientId)
+            ->findOrFail($prescriptionId);
+
         return Inertia::render('Prescriptions/Show', [
-            'prescription' => [], // Add real data
-            'pharmacy_suggestions' => [], // Add real data
+            'prescription' => $this->mapPrescription($prescription),
+            'pharmacy_suggestions' => [],
         ]);
     }
 
@@ -72,11 +52,22 @@ class PrescriptionController extends Controller
      */
     public function requestRefill(Request $request, $prescriptionId)
     {
+        $patientId = $this->resolvePatientId($request);
         $validated = $request->validate([
             'message' => 'nullable|string|max:500',
         ]);
 
-        // Send refill request to doctor
+        $prescription = Prescription::query()
+            ->where('patient_id', $patientId)
+            ->findOrFail($prescriptionId);
+
+        if (($prescription->refills_used ?? 0) >= ($prescription->refills_allowed ?? 0)) {
+            return back()->withErrors([
+                'refill' => 'No refills available for this prescription.',
+            ]);
+        }
+
+        $prescription->increment('refills_used');
         
         return back()->with('success', 'Refill request sent to your doctor');
     }
@@ -84,10 +75,28 @@ class PrescriptionController extends Controller
     /**
      * Download prescription
      */
-    public function download($prescriptionId)
+    public function download(Request $request, $prescriptionId)
     {
-        // Generate and download prescription file
-        return response()->download('path/to/file');
+        $patientId = $this->resolvePatientId($request);
+        $prescription = Prescription::query()
+            ->with('doctor:id,name')
+            ->where('patient_id', $patientId)
+            ->findOrFail($prescriptionId);
+
+        $filename = 'prescription-' . $prescription->id . '.txt';
+
+        return response()->streamDownload(function () use ($prescription) {
+            echo "Prescription #" . $prescription->id . PHP_EOL;
+            echo "Medication: " . ($prescription->medication_name ?? '-') . PHP_EOL;
+            echo "Dosage: " . ($prescription->dosage ?? '-') . PHP_EOL;
+            echo "Frequency: " . ($prescription->frequency ?? '-') . PHP_EOL;
+            echo "Doctor: " . ($prescription->doctor?->name ?? '-') . PHP_EOL;
+            echo "Issued: " . optional($prescription->issued_date)->format('Y-m-d H:i') . PHP_EOL;
+            echo "Expiry: " . optional($prescription->expiry_date)->format('Y-m-d H:i') . PHP_EOL;
+            echo "Instructions: " . ($prescription->instructions ?? '-') . PHP_EOL;
+        }, $filename, [
+            'Content-Type' => 'text/plain; charset=UTF-8',
+        ]);
     }
 
     /**
@@ -95,12 +104,50 @@ class PrescriptionController extends Controller
      */
     public function shareWithPharmacy(Request $request, $prescriptionId)
     {
+        $patientId = $this->resolvePatientId($request);
         $validated = $request->validate([
             'pharmacy_id' => 'required|integer',
         ]);
 
-        // Share prescription with selected pharmacy
+        Prescription::query()
+            ->where('patient_id', $patientId)
+            ->findOrFail($prescriptionId);
         
         return back()->with('success', 'Prescription shared with pharmacy');
+    }
+
+    private function resolvePatientId(Request $request): int
+    {
+        $user = $request->user();
+
+        $patientId = Patient::query()->where('user_id', $user->id)->value('id');
+        if (!$patientId) {
+            $patientId = Patient::query()->where('email', $user->email)->value('id');
+        }
+
+        if (!$patientId) {
+            abort(403, 'Patient profile not found');
+        }
+
+        return (int) $patientId;
+    }
+
+    private function mapPrescription(Prescription $prescription): array
+    {
+        $refillsAvailable = max(0, (int) ($prescription->refills_allowed ?? 0) - (int) ($prescription->refills_used ?? 0));
+
+        return [
+            'id' => $prescription->id,
+            'medication' => $prescription->medication_name,
+            'dosage' => $prescription->dosage,
+            'frequency' => $prescription->frequency,
+            'prescribed_by' => $prescription->doctor?->name ?? '-',
+            'issued_date' => $prescription->issued_date?->toDateString(),
+            'expiry_date' => $prescription->expiry_date?->toDateString(),
+            'refills' => $refillsAvailable,
+            'status' => $prescription->status,
+            'notes' => $prescription->instructions,
+            'duration' => $prescription->duration_days ? ($prescription->duration_days . ' days') : '-',
+        ];
     }
 }

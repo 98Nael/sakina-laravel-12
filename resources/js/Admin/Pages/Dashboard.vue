@@ -66,7 +66,12 @@
           </Link>
 
           <Link href="/admin/patients/pending" class="rounded-xl border border-slate-700 bg-slate-800/60 p-4 transition hover:border-amber-400/40 hover:bg-slate-800">
-            <p class="text-sm font-semibold text-white">Pending Patients</p>
+            <div class="flex items-center justify-between gap-3">
+              <p class="text-sm font-semibold text-white">Pending Patients</p>
+              <span class="inline-flex min-w-8 items-center justify-center rounded-full border border-rose-300/40 bg-rose-500/20 px-2 py-0.5 text-xs font-bold text-rose-200">
+                {{ stats.pendingPatients }}
+              </span>
+            </div>
             <p class="mt-1 text-xs text-slate-400">Approve or reject new registrations</p>
           </Link>
 
@@ -79,7 +84,9 @@
 
       <div class="rounded-3xl border border-white/10 bg-[#111827] p-6 text-slate-100 shadow-2xl shadow-black/20">
         <h2 class="text-lg font-bold text-white">System Status</h2>
-        <p class="mt-2 text-sm text-slate-300">Core services are running normally.</p>
+        <p class="mt-2 text-sm text-slate-300">
+          Today appointments: {{ stats.appointmentsToday }} · Completed: {{ stats.completedToday }}
+        </p>
 
         <div class="mt-5 space-y-3">
           <div class="flex items-center justify-between rounded-lg border border-slate-700 bg-slate-800/60 px-3 py-2">
@@ -88,11 +95,13 @@
           </div>
           <div class="flex items-center justify-between rounded-lg border border-slate-700 bg-slate-800/60 px-3 py-2">
             <span class="text-sm text-slate-300">Database</span>
-            <span class="text-xs font-semibold text-emerald-300">Connected</span>
+            <span class="text-xs font-semibold" :class="system.database === 'Connected' ? 'text-emerald-300' : 'text-rose-300'">
+              {{ system.database }}
+            </span>
           </div>
           <div class="flex items-center justify-between rounded-lg border border-slate-700 bg-slate-800/60 px-3 py-2">
             <span class="text-sm text-slate-300">Queue</span>
-            <span class="text-xs font-semibold text-amber-300">Idle</span>
+            <span class="text-xs font-semibold text-amber-300">{{ system.queue }}</span>
           </div>
         </div>
       </div>
@@ -108,12 +117,24 @@ defineProps({
     type: Object,
     default: null,
   },
+  stats: {
+    type: Object,
+    default: () => ({
+      totalUsers: 0,
+      doctors: 0,
+      patients: 0,
+      pendingPatients: 0,
+      appointmentsToday: 0,
+      completedToday: 0,
+    }),
+  },
+  system: {
+    type: Object,
+    default: () => ({
+      database: 'Unavailable',
+      api: 'Operational',
+      queue: 'Idle',
+    }),
+  },
 });
-
-const stats = {
-  totalUsers: 45,
-  doctors: 12,
-  patients: 28,
-  pendingPatients: 0,
-};
 </script>

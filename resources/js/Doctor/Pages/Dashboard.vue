@@ -100,18 +100,21 @@
               </tr>
             </thead>
             <tbody class="divide-y divide-slate-100">
-              <tr v-for="appointment in todaySchedule" :key="appointment.patient" class="hover:bg-teal-50/50">
+              <tr v-for="appointment in todaySchedule" :key="appointment.id" class="hover:bg-teal-50/50">
                 <td class="px-5 py-4 font-semibold text-slate-800">{{ appointment.patient }}</td>
                 <td class="px-5 py-4 text-slate-600">{{ appointment.time }}</td>
                 <td class="px-5 py-4 text-slate-600">{{ appointment.type }}</td>
                 <td class="px-5 py-4">
                   <span
                     class="inline-flex rounded-full px-2.5 py-1 text-xs font-semibold"
-                    :class="appointment.status === 'Confirmed' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'"
+                    :class="statusClass(appointment.status)"
                   >
-                    {{ appointment.status }}
+                    {{ appointment.status_label }}
                   </span>
                 </td>
+              </tr>
+              <tr v-if="!todaySchedule.length">
+                <td colspan="4" class="px-5 py-8 text-center text-sm text-slate-500">No appointments scheduled for today.</td>
               </tr>
             </tbody>
           </table>
@@ -131,30 +134,37 @@ const props = defineProps({
     type: Object,
     default: () => ({}),
   },
+  stats: {
+    type: Object,
+    default: () => ({
+      totalPatients: 0,
+      todayAppointments: 0,
+      activePrescriptions: 0,
+      consultationHours: 0,
+    }),
+  },
+  todaySchedule: {
+    type: Array,
+    default: () => [],
+  },
 });
 
-const stats = {
-  totalPatients: 156,
-  todayAppointments: 3,
-  pendingPrescriptions: 8,
-  consultationHours: 24,
-};
-
-const metricCards = [
-  { title: 'Total patients', value: stats.totalPatients, trend: 'Active panel', accentClass: 'text-teal-700' },
-  { title: "Today's appointments", value: stats.todayAppointments, trend: 'On schedule', accentClass: 'text-emerald-700' },
-  { title: 'Pending prescriptions', value: stats.pendingPrescriptions, trend: 'Needs follow-up', accentClass: 'text-amber-700' },
-  { title: 'Consultation hours', value: `${stats.consultationHours}h`, trend: 'This week', accentClass: 'text-cyan-700' },
-];
-
-const todaySchedule = [
-  { patient: 'Ahmed Hassan', time: '10:00 AM', type: 'Consultation', status: 'Confirmed' },
-  { patient: 'Fatima Ahmed', time: '11:30 AM', type: 'Follow-up', status: 'Pending' },
-  { patient: 'Mohammed Ali', time: '2:00 PM', type: 'Check-up', status: 'Confirmed' },
-];
+const metricCards = computed(() => [
+  { title: 'Total patients', value: props.stats.totalPatients ?? 0, trend: 'From database', accentClass: 'text-teal-700' },
+  { title: "Today's appointments", value: props.stats.todayAppointments ?? 0, trend: 'Today', accentClass: 'text-emerald-700' },
+  { title: 'Active prescriptions', value: props.stats.activePrescriptions ?? 0, trend: 'Open now', accentClass: 'text-amber-700' },
+  { title: 'Consultation hours', value: `${props.stats.consultationHours ?? 0}h`, trend: 'This week', accentClass: 'text-cyan-700' },
+]);
 
 const greetingTitle = computed(() => {
   const doctorName = props.user?.name;
   return doctorName ? `Good shift, Dr. ${doctorName}` : 'Good shift, Doctor';
 });
+
+function statusClass(status) {
+  if (status === 'completed') return 'bg-emerald-100 text-emerald-700';
+  if (status === 'scheduled') return 'bg-sky-100 text-sky-700';
+  if (status === 'cancelled' || status === 'no-show') return 'bg-rose-100 text-rose-700';
+  return 'bg-amber-100 text-amber-700';
+}
 </script>
