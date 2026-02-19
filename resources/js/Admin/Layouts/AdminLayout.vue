@@ -34,6 +34,12 @@
           Settings
         </Link>
         <Link
+          href="/admin/centers"
+          :class="navClass('/admin/centers')"
+        >
+          Centers
+        </Link>
+        <Link
           href="/admin/reports"
           :class="navClass('/admin/reports')"
         >

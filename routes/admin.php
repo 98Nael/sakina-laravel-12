@@ -7,6 +7,7 @@ use App\Http\Controllers\Admin\SettingsController;
 use App\Http\Controllers\Admin\ReportsController;
 use App\Http\Controllers\Admin\ProfileController;
 use App\Http\Controllers\Admin\ContactMessageController;
+use App\Http\Controllers\Admin\CenterController;
 
 // ========================================
 // 👨‍💼 ADMIN ROUTES (بريفكس: /admin)
@@ -61,6 +62,13 @@ Route::middleware(['auth', 'role:admin', 'inertia_admin'])->prefix('admin')->nam
     Route::post('/settings/about-contents', [SettingsController::class, 'storeAboutContent'])->name('settings.about.store');
     Route::put('/settings/about-contents/{aboutContent}', [SettingsController::class, 'updateAboutContent'])->name('settings.about.update');
     Route::delete('/settings/about-contents/{aboutContent}', [SettingsController::class, 'destroyAboutContent'])->name('settings.about.destroy');
+
+    // Centers management (mental clinics and health centers)
+    Route::get('/centers', [CenterController::class, 'index'])->name('centers.index');
+    Route::post('/centers', [CenterController::class, 'store'])->name('centers.store');
+    Route::put('/centers/{center}', [CenterController::class, 'update'])->name('centers.update');
+    Route::patch('/centers/{center}/status', [CenterController::class, 'updateStatus'])->name('centers.updateStatus');
+    Route::delete('/centers/{center}', [CenterController::class, 'destroy'])->name('centers.destroy');
     
     // التقارير والتحليلات
     Route::get('/Appointment Report', function () {

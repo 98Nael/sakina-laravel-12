@@ -3,6 +3,7 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
     <link rel="icon" type="image/svg+xml" href="/brand/sakina-favicon.svg">
     <title>Sakina Health Platform</title>
     <link rel="preconnect" href="https://fonts.bunny.net">
@@ -22,6 +23,7 @@
             <nav class="hidden items-center gap-6 text-sm text-slate-300 md:flex">
                 <a href="/about" class="hover:text-white">About</a>
                 <a href="/contact" class="hover:text-white">Contact</a>
+                <a href="#centers-map" class="hover:text-white">Clinics Map</a>
                 <a href="/doctor/login" class="hover:text-white">Doctor</a>
                 <a href="/patient/login" class="hover:text-white">Patient</a>
                 <a href="/admin/login" class="hover:text-white">Admin</a>
@@ -115,6 +117,25 @@
             </div>
         </section>
 
+        <section id="centers-map" class="relative z-10 mx-auto w-full max-w-7xl px-6 pb-14">
+            <div class="rounded-3xl border border-cyan-400/20 bg-cyan-500/10 p-6 shadow-2xl backdrop-blur">
+                <div class="mb-4 flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+                    <div>
+                        <p class="text-xs uppercase tracking-[0.2em] text-cyan-200">Map Directory</p>
+                        <h2 class="mt-2 text-2xl font-extrabold text-white">Clinics and Health Centers</h2>
+                        <p class="mt-2 text-sm text-slate-200">
+                        </p>
+                    </div>
+                    <span class="inline-flex rounded-full border border-cyan-300/40 bg-cyan-500/10 px-3 py-1 text-xs font-semibold text-cyan-100">
+                        Total Pins: {{ count($mapCenters) }}
+                    </span>
+                </div>
+
+                <div id="landing-centers-map" class="h-[420px] w-full rounded-2xl border border-white/15 bg-slate-900/40"></div>
+                <p id="landing-centers-map-message" class="mt-3 text-sm text-slate-300"></p>
+            </div>
+        </section>
+
         <section id="privacy-policy" class="relative z-10 mx-auto w-full max-w-7xl px-6 pb-14">
             <div class="rounded-3xl border border-violet-400/20 bg-violet-500/10 p-6 shadow-2xl backdrop-blur">
                 <div class="mb-4 flex items-center justify-between gap-3">
@@ -199,5 +220,139 @@
             </div>
         </footer>
     </div>
+
+    <script>
+        (function () {
+            const centers = @json($mapCenters);
+            const apiKey = @json($googleMapsApiKey);
+            const mapElement = document.getElementById('landing-centers-map');
+            const messageElement = document.getElementById('landing-centers-map-message');
+
+            if (!mapElement || !messageElement) {
+                return;
+            }
+
+            const defaultCenter = { lat: 24.7136, lng: 46.6753 };
+            const escapeHtml = (value) => String(value ?? '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+
+            const showMessage = (message) => {
+                messageElement.textContent = message;
+            };
+
+            if (!apiKey) {
+                showMessage('Map is currently unavailable.');
+                return;
+            }
+
+            const loadScript = () => {
+                return new Promise((resolve, reject) => {
+                    if (window.google && window.google.maps) {
+                        resolve();
+                        return;
+                    }
+
+                    const existingScript = document.querySelector('script[data-google-maps="landing"]');
+                    if (existingScript) {
+                        existingScript.addEventListener('load', resolve, { once: true });
+                        existingScript.addEventListener('error', reject, { once: true });
+                        return;
+                    }
+
+                    const script = document.createElement('script');
+                    script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(apiKey)}&v=weekly`;
+                    script.async = true;
+                    script.defer = true;
+                    script.dataset.googleMaps = 'landing';
+                    script.onload = resolve;
+                    script.onerror = reject;
+                    document.head.appendChild(script);
+                });
+            };
+
+            loadScript()
+                .then(() => {
+                    const map = new google.maps.Map(mapElement, {
+                        center: defaultCenter,
+                        zoom: 6,
+                        mapTypeId: 'roadmap',
+                        mapTypeControl: false,
+                        streetViewControl: false,
+                        fullscreenControl: true,
+                    });
+
+                    if (!centers.length) {
+                        showMessage('No clinics with coordinates available yet.');
+                        return;
+                    }
+
+                    const infoWindow = new google.maps.InfoWindow();
+                    const bounds = new google.maps.LatLngBounds();
+                    let validPinsCount = 0;
+                    let firstValidPosition = null;
+
+                    centers.forEach((center) => {
+                        const latitude = Number(center.latitude);
+                        const longitude = Number(center.longitude);
+
+                        if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+                            return;
+                        }
+
+                        const marker = new google.maps.Marker({
+                            map,
+                            position: { lat: latitude, lng: longitude },
+                            title: center.name,
+                        });
+
+                        marker.addListener('click', () => {
+                            const typeLabel = center.type === 'mental_clinic' ? 'Mental Clinic' : 'Health Center';
+                            infoWindow.setContent(
+                                `<div style="min-width:170px;font-family:Arial,sans-serif;">
+                                    <p style="margin:0;font-weight:700;color:#0f172a;">${escapeHtml(center.name)}</p>
+                                    <p style="margin:4px 0 0;color:#334155;font-size:12px;">${typeLabel}</p>
+                                </div>`
+                            );
+                            infoWindow.open({ anchor: marker, map });
+                        });
+
+                        const position = { lat: latitude, lng: longitude };
+                        bounds.extend(position);
+                        validPinsCount += 1;
+
+                        if (!firstValidPosition) {
+                            firstValidPosition = position;
+                        }
+                    });
+
+                    if (bounds.isEmpty()) {
+                        showMessage('No valid map coordinates found for centers.');
+                        return;
+                    }
+
+                    if (validPinsCount === 1 && firstValidPosition) {
+                        map.setCenter(firstValidPosition);
+                        map.setZoom(15);
+                    } else {
+                        map.fitBounds(bounds, 70);
+                        google.maps.event.addListenerOnce(map, 'idle', () => {
+                            const currentZoom = map.getZoom();
+                            if (typeof currentZoom === 'number' && currentZoom > 14) {
+                                map.setZoom(14);
+                            }
+                        });
+                    }
+                    showMessage('Click any pin to view clinic details.');
+                })
+                .catch(() => {
+                    showMessage('Google Maps failed to load. Check API key and allowed domains.');
+                });
+        })();
+    </script>
+    @include('partials.chat-assistant')
 </body>
 </html>

@@ -5,6 +5,7 @@ use App\Http\Controllers\LoginController;
 use App\Http\Controllers\DashboardController;
 use App\Models\Admin\Admin;
 use App\Models\AboutContent;
+use App\Models\Center;
 use App\Models\Doctor\Doctor;
 use App\Models\PrivacyPolicy;
 use App\Models\SocialLink;
@@ -36,8 +37,10 @@ use App\Http\Controllers\Patient\Auth\RegisterController as PatientRegisterContr
 use App\Http\Controllers\Patient\Auth\LoginController as PatientLoginController;
 use App\Http\Controllers\Doctor\Auth\LoginController as DoctorLoginController;
 use App\Http\Controllers\Admin\Auth\LoginController as AdminLoginController;
+use App\Http\Controllers\ChatAssistantController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Schema;
 use Inertia\Inertia;
 
 // ========================================
@@ -97,6 +100,68 @@ Route::get('/', function () {
         ];
     }
 
+    $mapCenters = collect();
+
+    if (Schema::hasTable('centers')
+        && Schema::hasColumn('centers', 'latitude')
+        && Schema::hasColumn('centers', 'longitude')
+    ) {
+        $mapCenters = Center::query()
+            ->whereNotNull('latitude')
+            ->whereNotNull('longitude')
+            ->orderBy('name')
+            ->get([
+                'id',
+                'name',
+                'type',
+                'city',
+                'address',
+                'latitude',
+                'longitude',
+            ])
+            ->map(function (Center $center) {
+                return [
+                    'id' => $center->id,
+                    'name' => $center->name,
+                    'type' => $center->type,
+                    'city' => $center->city,
+                    'address' => $center->address,
+                    'latitude' => (float) $center->latitude,
+                    'longitude' => (float) $center->longitude,
+                ];
+            })
+            ->values();
+    }
+
+    $googleMapsApiKey = config('services.google_maps.key')
+        ?: env('VITE_GOOGLE_MAPS_API_KEY')
+        ?: ($_ENV['VITE_GOOGLE_MAPS_API_KEY'] ?? null)
+        ?: ($_SERVER['VITE_GOOGLE_MAPS_API_KEY'] ?? null);
+
+    if (!$googleMapsApiKey && file_exists(base_path('.env'))) {
+        $envLines = @file(base_path('.env'), FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) ?: [];
+
+        foreach ($envLines as $line) {
+            $trimmed = trim($line);
+            if ($trimmed === '' || str_starts_with($trimmed, '#')) {
+                continue;
+            }
+
+            if (!str_starts_with($trimmed, 'VITE_GOOGLE_MAPS_API_KEY=')) {
+                continue;
+            }
+
+            $value = substr($trimmed, strlen('VITE_GOOGLE_MAPS_API_KEY='));
+            $value = trim($value, " \t\n\r\0\x0B\"'");
+
+            if ($value !== '') {
+                $googleMapsApiKey = $value;
+            }
+
+            break;
+        }
+    }
+
     return view('welcome', [
         'doctors' => $doctors,
         'contactInfo' => [
@@ -107,6 +172,8 @@ Route::get('/', function () {
         ],
         'socialLinks' => $socialLinks,
         'privacyPolicy' => $privacyPolicy,
+        'mapCenters' => $mapCenters,
+        'googleMapsApiKey' => $googleMapsApiKey,
     ]);
 })->name('home');
 
@@ -161,6 +228,10 @@ Route::post('/contact', function (\Illuminate\Http\Request $request) {
 
     return back()->with('success', 'Your message has been sent successfully.');
 })->name('contact.send');
+
+Route::post('/chat-assistant', [ChatAssistantController::class, 'respond'])
+    ->middleware('throttle:30,1')
+    ->name('chat.assistant');
 
 // ========================================
 // AUTHENTICATION ROUTES (تسجيل دخول و خروج)
